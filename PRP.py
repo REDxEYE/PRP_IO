@@ -263,6 +263,8 @@ class Bone:
         self.parent = 0
         self.skin_id = 0
 
+    def __repr__(self):
+        return '<Bone "{}" parent:{}>'.format(self.name,self.parent)
 
 class Model:
 
@@ -273,6 +275,7 @@ class Model:
         self.stream_offset = 0
         self.bone_count = 0
         self.bones = []
+        self.bone_map_list = []
 
     def read(self,reader:ByteIO):
         items = reader.get_items()
@@ -326,6 +329,43 @@ class Model:
                 if self.bone_count:
                     for m in range(self.bone_count):
                         tm = reader.tell()
+                        bone = Bone()
+                        bone.name = reader.read_ascii_string(32)
+                        bone.matrix = reader.read_fmt('f'*16)
+                        reader.skip(4*7)
+                        bone.skin_id = reader.read_int32()
+                        bone.parent = reader.read_int32()
+                        reader.skip(4*3)
+                        self.bones.append(bone)
+                        reader.seek(tm+144)
+            if item.type == 35:
+                items2 = reader.get_items()
+                for item2 in items2:
+                    reader.seek(item2.offset)
+                    if item2.type == 1:
+                        items3 = reader.get_items()
+                        for item3 in items3:
+                            reader.seek(item3.offset)
+                            flag = reader.read_fmt('BBBB')
+                            if flag == (160, 0, 65, 0):
+                                items4 = reader.get_items()
+                                for item4 in items4:
+                                    reader.seek(item4.offset)
+                                    count = 0
+                                    stream_offset = 0
+                                    items5 = reader.get_items()
+                                    for item5 in items5:
+                                        reader.seek(item5.offset)
+                                        if item5.type == 22:
+                                            count = reader.read_int32()
+                                        if item5.type == 23:
+                                            stream_offset = reader.tell()
+                                    if count:
+                                        reader.seek(stream_offset)
+                                        self.bone_map_list.extend([reader.read_int32() for _ in range(count)])
+
+
+
 
 
 
