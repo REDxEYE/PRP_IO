@@ -259,7 +259,7 @@ class Mesh:
                 self.vertices.append(reader.read_fmt('fff'))
             if self.uv_offset is not None:
                 reader.seek(self.uv_offset + tk)
-                self.uv.append([1-reader.read_float(),reader.read_float()])
+                self.uv.append([reader.read_float(),1-reader.read_float()])
             if self.skin_ind_offset:
                 # reader.seek(self.skin_ind_offset + tk)
                 i1,i2,i3 = reader.read_fmt('BBB')
@@ -456,9 +456,12 @@ class Model:
 
 
 if __name__ == '__main__':
-    # a = PRP(r"D:\SteamLibrary\steamapps\common\Overlord II\Resources\Environment Empire Sewers.prp")
-    a = PRP(r"D:\SteamLibrary\steamapps\common\Overlord II\Resources\Character Alpha Lizard.prp")
-    # a = PRP(r"D:\SteamLibrary\steamapps\common\Overlord II\Resources\Character Minion Bard.prp")
-    a.read()
-    a.save()
+    path = Path(r"D:\SteamLibrary\steamapps\common\Overlord II\Resources")
+    for file in path.glob('Character*.prp'):
+        # a = PRP(r"D:\SteamLibrary\steamapps\common\Overlord II\Resources\Environment Empire Sewers.prp")
+        # a = PRP(r"D:\SteamLibrary\steamapps\common\Overlord II\Resources\Character Alpha Lizard.prp")
+        print('Extracting',file.stem)
+        a = PRP(file)
+        a.read()
+        a.save()
     ...
