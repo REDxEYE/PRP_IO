@@ -16,9 +16,9 @@ def split(array, n=3):
 def fix_matrix(matrix):
     t = matrix
     matrix = [[0.0, 0.0, 0.0, 0.0],
-                   [0.0, 0.0, 0.0, 0.0],
-                   [0.0, 0.0, 0.0, 0.0],
-                   [0.0, 0.0, 0.0, 0.0]]
+              [0.0, 0.0, 0.0, 0.0],
+              [0.0, 0.0, 0.0, 0.0],
+              [0.0, 0.0, 0.0, 0.0]]
     matrix[0][0] = t[0]
     matrix[1][0] = t[1]
     matrix[2][0] = t[2]
@@ -39,14 +39,16 @@ def fix_matrix(matrix):
 
 
 class PRPIO:
-    def __init__(self, path: str = None, import_textures=False, join_bones=False):
+    def __init__(self, path: str = '', json_data={}, import_textures=False, join_bones=False):
         # TODO: make import_textures to do stuff
         self.import_textures = import_textures
         self.path = Path(path)
         self.name = self.path.stem
         self.join_bones = join_bones
-
-        self.model_json = json.load(self.path.open('r'))
+        if json_data:
+            self.model_json = json_data
+        else:
+            self.model_json = json.load(self.path.open('r'))
 
         self.armature_obj = None
         self.armature = None
@@ -177,7 +179,7 @@ class PRPIO:
     def build_meshes(self, mesh_data):
 
         # base_name = mesh_data['name']
-        for m,(mesh_id, mat_id) in enumerate(mesh_data['mesh_data']):
+        for m, (mesh_id, mat_id) in enumerate(mesh_data['mesh_data']):
             mesh_json = self.model_json['meshes'][mesh_id]
             # pprint(mesh_json)
             mat_json = self.model_json['materials'][mat_id]
@@ -221,9 +223,12 @@ class PRPIO:
                         if weight != 0:
                             # if bone in mesh_data['bone_map']:
                             bone_id = mesh_data['bone_map'][m][bone]
-                            bone_name = mesh_data['name_list'][str(bone_id)]#['name']
+                            bone_name = mesh_data['name_list'][str(bone_id)]  # ['name']
                             weight_groups[bone_name].add([n], weight / 255, 'REPLACE')
-            self.get_material(mat_json['name'],mesh_obj)
+            self.get_material(mat_json['name'], mesh_obj)
+            bpy.ops.object.select_all(action="DESELECT")
+            mesh_obj.select = True
+            bpy.context.scene.objects.active = mesh_obj
             bpy.ops.object.shade_smooth()
             # mesh.normals_split_custom_set(normals)
             mesh.use_auto_smooth = True
