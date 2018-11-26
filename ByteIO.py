@@ -297,10 +297,10 @@ class ByteIO:
         if obj_type >= 128:
             count_s = obj_type - 128
             count_b = self.read_int32()
-            lst.extend([DataChunk(*self.read_fmt('BB')) for _ in range(count_s)])
-            lst.extend([DataChunk(*self.read_fmt('ii')) for _ in range(count_b)])
+            lst.extend([DataChunk(*self.read_fmt('BB'), self) for _ in range(count_s)])
+            lst.extend([DataChunk(*self.read_fmt('ii'), self) for _ in range(count_b)])
         else:
-            lst.extend([DataChunk(*self.read_fmt('BB')) for _ in range(obj_type)])
+            lst.extend([DataChunk(*self.read_fmt('BB'), self) for _ in range(obj_type)])
         pos = self.tell()
         out = []
         for item in lst:
@@ -310,7 +310,7 @@ class ByteIO:
         return out
 
     @staticmethod
-    def filter_items(to_filter:List['DataChunk'], obj_id) -> List['DataChunk']:
+    def filter_items(to_filter: List['DataChunk'], obj_id) -> List['DataChunk']:
         return list(filter(lambda a: a.type == obj_id, to_filter))
 
     def get_items(self) -> List['DataChunk']:
@@ -319,12 +319,20 @@ class ByteIO:
 
 
 class DataChunk:
-    def __init__(self, t, o):
+    def __init__(self, t, o, r):
+        self.reader:ByteIO = r
         self.type = t
         self.offset = o
 
+    @property
+    def preview(self):
+        with self.reader.save_current_pos():
+            self.reader.seek(self.offset)
+            return self.reader.preview
+
     def __repr__(self):
-        return '<DataChunk type:{} offset:{}>'.format(self.type,self.offset)
+        return '<DataChunk type:{} offset:{}>'.format(self.type, self.offset)
+
 
 if __name__ == '__main__':
     a = ByteIO(path=r'./test.bin', mode='w')
