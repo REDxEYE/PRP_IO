@@ -1,6 +1,6 @@
-from pathlib import Path
-import os
 import json
+import os
+from pathlib import Path
 from typing import List
 
 from PIL import Image
@@ -15,26 +15,29 @@ class PRP:
         self.reader = ByteIO(path=self.path)
         self.dump_path = self.path.parent / 'dump' / self.path.stem  # type: Path
         os.makedirs(self.dump_path, exist_ok=True)
-
         self.magic = b''
         self.model_name = ''
+        self.model_name2 = ''
+        self.copyright = ''
         self.textures = []  # type: List[Texture]
         self.meshes = []  # type: List[Mesh]
         self.models = []  # type: List[Model]
         self.materials = []  # type: List[Material]
+        self.audio = []  # type: List[Audio]
+        self.animation = []  # type: List[Animation]
 
     def to_json(self):
         data = {
-            'models': {m.chunk_name:m.to_json() for m in self.models},
-            'meshes': {m.chunk_name:m.to_json() for m in self.meshes},
-            'textures': {m.chunk_name:m.to_json() for m in self.textures},
-            'materials': {m.chunk_name:m.to_json() for m in self.materials},
+            'models': {m.chunk_name: m.to_json() for m in self.models},
+            'meshes': {m.chunk_name: m.to_json() for m in self.meshes},
+            'textures': {m.chunk_name: m.to_json() for m in self.textures},
+            'materials': {m.chunk_name: m.to_json() for m in self.materials},
         }
         return data
 
     def save(self):
-        with (self.dump_path/'model.json').open('w') as fp:
-            json.dump(self.to_json(),fp,indent=1)
+        with (self.dump_path / 'model.json').open('w') as fp:
+            json.dump(self.to_json(), fp, indent=1)
 
     def read(self):
         reader = self.reader
@@ -43,36 +46,194 @@ class PRP:
         reader.seek(16)
         self.model_name = reader.read_ascii_string(160)
         lst = reader.get_items()
-        items = reader.filter_items(lst, 26)
+        # items = reader.filter_items(lst, 26)
+        for item in lst:
+            item.seek_to()
+            if item.type == 17:
+                items2 = reader.get_items()
+                for item2 in items2:
+                    item2.seek_to()
+
+                    if item2.type == 23:
+                        self.copyright = reader.read_ascii_string(reader.read_int32())
+
+            if item.type == 22:
+                self.model_name2 = reader.read_ascii_string(reader.read_int32())
+
+            if item.type == 26:
+                item.seek_to()
+                reader.skip(3)
+                items2 = reader.get_items()
+                for item2 in items2:
+                    reader.seek(item2.offset)
+                    # flag = reader.read_int32()
+                    flag = reader.read_fmt('BBBB')
+                    if flag in [(61, 0, 65, 0), (153, 0, 65, 0), (152, 0, 65, 0)]:
+                        print('Found texture, reading it')
+                        tex = Texture(self.dump_path)
+                        tex.read(reader)
+                        print('\tTexture "{}" {}x{}\n'.format(tex.name,tex.width,tex.height))
+                        self.textures.append(tex)
+
+                    elif flag == (53, 0, 65, 0):
+                        print('Found Mesh, reading it')
+                        mesh = Mesh(self.dump_path)
+                        mesh.read(reader)
+                        print('\tMesh "{}"\n'.format(mesh.name))
+                        self.meshes.append(mesh)
+                    elif flag in [(82, 6, 65, 0), (60, 6, 65, 0), (36, 6, 65, 0), (10, 6, 65, 0), (15, 6, 65, 0),
+                                  (8, 6, 65, 0),
+                                  (54, 6, 65, 0), (38, 6, 65, 0), (18, 6, 65, 0), (22, 6, 65, 0), (32, 6, 65, 0)]:
+                        print('Found material, reading it')
+                        mat = Material(self.dump_path)
+                        mat.read(reader)
+                        print('\tMaterial "{}"\n'.format(mat.name))
+                        self.materials.append(mat)
+
+                    elif flag in [(75, 0, 65, 0)]:
+                        print('Found Model, reading it')
+                        mdl = Model(self.dump_path)
+                        mdl.read(reader)
+                        print('\tModel "{}" bones:{}\n'.format(mdl.name,mdl.bone_count))
+                        self.models.append(mdl)
+                    elif flag == (5, 0, 65, 0):
+                        print('Found Animation, reading it')
+                        anim = Animation(self.dump_path)
+                        anim.read(reader)
+                        self.animation.append(anim)
+                    elif flag == (0, 0, 161, 0):
+                        print('Found Audio, reading it')
+                        audio = Audio(self.dump_path)
+                        audio.read(reader)
+                        print('\tAudio "{}"\n'.format(audio.name))
+                        audio.save()
+                        self.audio.append(audio)
+                    else:
+                        print('Found new flag',flag)
+
+
+class Animation:
+
+    def __init__(self, path: Path):
+        self.path = path
+        self.chunk_name = ''
+        self.name = ''
+        self.bone_names = []
+        self.frame_count = 0
+        self.frame_offset = 0
+        self.frame_count2 = 0
+        self.frame_offset2 = 0
+        self.anim_data = []
+        self.anim_data2 = []
+        self.anim_data3 = []
+    def read(self, reader: ByteIO):
+        items = reader.get_items()
         for item in items:
-            reader.seek(item.offset)
-            reader.skip(3)
-            items2 = reader.get_items()
-            for item2 in items2:
-                reader.seek(item2.offset)
-                # flag = reader.read_int32()
-                flag = reader.read_fmt('BBBB')
-                if flag in [(61, 0, 65, 0), (153, 0, 65, 0), (152, 0, 65, 0)]:
-                    tex = Texture(self.dump_path)
-                    tex.read(reader)
-                    self.textures.append(tex)
+            item.seek_to()
 
-                elif flag == (53, 0, 65, 0):
-                    mesh = Mesh(self.dump_path)
-                    mesh.read(reader)
-                    self.meshes.append(mesh)
-                elif flag in [(82, 6, 65, 0), (60, 6, 65, 0), (36, 6, 65, 0), (10, 6, 65, 0), (15, 6, 65, 0),
-                              (8, 6, 65, 0),
-                              (54, 6, 65, 0), (38, 6, 65, 0), (18, 6, 65, 0), (22, 6, 65, 0), (32, 6, 65, 0)]:
-                    mat = Material(self.dump_path)
-                    mat.read(reader)
-                    self.materials.append(mat)
+            if item.type == 20:
+                self.chunk_name = reader.read_ascii_string(reader.read_int32())
+            if item.type == 21:
+                self.name = reader.read_ascii_string(reader.read_int32())
+                print(self.name)
+            if item.type == 1:
+                items2 = item.get_items()
+                for item2 in items2:
+                    item2.seek_to()
+                    if item2.type == 10:
+                        reader.skip(3)
+                        items4 = item2.get_items()
+                        for item4 in items4:
+                            item4.seek_to()
+                            flag = reader.read_fmt('BBBB')
+                            print(flag)
+                            if flag == (7, 0, 65, 0): #bone
+                                items5 = item4.get_items()
+                                for item5 in items5:
+                                    print(item5)
+                                    item5.seek_to()
 
-                elif flag in [(75, 0, 65, 0)]:
-                    mdl = Model(self.dump_path)
-                    mdl.read(reader)
-                    self.models.append(mdl)
+                                    if item5.type == 20:
+                                        b_name = reader.read_ascii_string(reader.read_int32())
+                                        print('\t',b_name)
+                                        self.bone_names.append(b_name)
+                                    if item5.type == 24:
+                                        items6 = item5.get_items()
+                                        for item6 in items6:
+                                            item6.seek_to()
+                                            if item6.type == 21:
+                                                self.frame_count = reader.read_uint32()
+                                            if item6.type == 22:
+                                                self.frame_offset = reader.tell()
+                                        if self.frame_offset and self.frame_count:
+                                            for _ in range(self.frame_count):
+                                                self.anim_data.append(reader.read_bytes(16))
 
+                                    if item5.type == 25:
+                                        items6 = item5.get_items()
+                                        for item6 in items6:
+                                            item6.seek_to()
+                                            if item6.type == 21:
+                                                items7 = item5.get_items()
+                                                for item7 in items7:
+                                                    item7.seek_to()
+                                                    if item7.type == 22:
+                                                        self.frame_count = reader.read_uint32()
+                                                    if item7.type == 23:
+                                                        self.frame_offset = reader.tell()
+                                                    if item7.type == 30:
+                                                        self.frame_count2 = reader.read_uint32()
+                                                    if item7.type == 31:
+                                                        self.frame_offset2 = reader.tell()
+
+                                        if self.frame_offset and self.frame_count:
+                                            reader.seek(self.frame_offset)
+                                            for _ in range(self.frame_count):
+                                                self.anim_data2.append(reader.read_bytes(6))
+                                        if self.frame_offset2 and self.frame_count2:
+                                            reader.seek(self.frame_offset2)
+                                            for _ in range(self.frame_count2):
+                                                self.anim_data3.append(reader.read_bytes(8))
+
+
+class Audio:
+
+    def __init__(self, path: Path):
+        self.path = path
+        self.chunk_name = ''
+        self.name = ''
+        self.temp_path = ''
+        self.size = 0
+        self.data = b''
+
+    def read(self, reader: ByteIO):
+        items = reader.get_items()
+        for item in items:
+            item.seek_to()
+
+            if item.type == 20:
+                self.chunk_name = reader.read_ascii_string(reader.read_int32())
+            if item.type == 21:
+                self.name = reader.read_ascii_string(reader.read_int32())
+            if item.type == 100:
+                self.temp_path = reader.read_ascii_string(reader.read_int32())
+
+            if item.type == 1:
+                items2 = item.get_items()
+                for item2 in items2:
+                    item2.seek_to()
+                    if item2.type == 30:
+                        item2.seek_to()
+                        self.size = reader.read_uint32()
+                    if item2.type == 31:
+                        self.data = reader.read_bytes(self.size)
+
+    def save(self):
+        path = self.path
+        path/='audio'
+        os.makedirs(path,exist_ok=True)
+        with (path/(self.name+'.wav')).open('wb') as fp:
+            fp.write(self.data)
 
 class Texture:
 
@@ -86,8 +247,10 @@ class Texture:
         self.offset = 0
 
     def to_json(self):
-        data = {'name': str(self.name), 'w': self.width, 'h': self.height,
-                'path': str(self.path / 'textures' / self.name.with_name(self.name.stem).with_suffix('.tga'))}
+        data = {
+            'name': str(self.name), 'w': self.width, 'h': self.height,
+            'path': str(self.path / 'textures' / self.name.with_name(self.name.stem).with_suffix('.tga'))
+        }
         return data
 
     def read(self, reader: ByteIO):
@@ -165,13 +328,14 @@ class Mesh:
         ...
 
     def to_json(self):
-        verts = {'pos': self.vertices,
-                 'uv': self.uv,
-                 'weight': {
-                     'bone': self.weight_inds,
-                     'weight': self.weight_weight
-                 }
-                 }
+        verts = {
+            'pos': self.vertices,
+            'uv': self.uv,
+            'weight': {
+                'bone': self.weight_inds,
+                'weight': self.weight_weight
+            }
+        }
         data = {'indices': self.indices, 'name': self.name, 'vertices': verts, 'mode': self.mode}
         return data
 
@@ -259,16 +423,16 @@ class Mesh:
                 self.vertices.append(reader.read_fmt('fff'))
             if self.uv_offset is not None:
                 reader.seek(self.uv_offset + tk)
-                self.uv.append([reader.read_float(),1-reader.read_float()])
+                self.uv.append([reader.read_float(), 1 - reader.read_float()])
             if self.skin_ind_offset:
                 # reader.seek(self.skin_ind_offset + tk)
-                i1,i2,i3 = reader.read_fmt('BBB')
-                self.weight_inds.append([i1,i2])
+                i1, i2, i3 = reader.read_fmt('BBB')
+                self.weight_inds.append([i1, i2])
             if self.skin_weight_offset:
                 # reader.seek(self.skin_weight_offset + tk)
-                w1,w2 = reader.read_fmt('BB')
-                w3 = 255-(w1+w2)
-                self.weight_weight.append([w1,w2])
+                w1, w2 = reader.read_fmt('BB')
+                w3 = 255 - (w1 + w2)
+                self.weight_weight.append([w1, w2])
             reader.seek(tk + self.vert_stride)
 
 
@@ -283,10 +447,14 @@ class Material:
         self.normal = ''
         self.mask = ''
         self.something1 = ''
+        self.something2 = ''
         ...
 
     def to_json(self):
-        data = {'name': self.name, 'diffuse': self.diffuse,'mask':self.mask,'normal':self.normal,'glow':self.glow,'unk':self.something1}
+        data = {
+            'name': self.name, 'diffuse': self.diffuse, 'mask': self.mask, 'normal': self.normal, 'glow': self.glow,
+            'unk': self.something1, 'unk2': self.something2
+        }
         return data
 
     def read(self, reader: ByteIO):
@@ -321,14 +489,12 @@ class Material:
                     reader.seek(item2.offset)
                     if item2.type == 20:
                         self.mask = reader.read_ascii_string(reader.read_int32())
-                        ...
             if item.type == 49:
                 items2 = reader.get_items()
                 for item2 in items2:
                     reader.seek(item2.offset)
                     if item2.type == 20:
                         self.something1 = reader.read_ascii_string(reader.read_int32())
-                        ...
 
 
 class Bone:
@@ -343,7 +509,7 @@ class Bone:
         return '<Bone "{}" parent:{}>'.format(self.name, self.parent)
 
     def to_json(self):
-        data = {'matrix': self.matrix, 'parent': self.parent, 'id': self.skin_id,'name':self.name}
+        data = {'matrix': self.matrix, 'parent': self.parent, 'id': self.skin_id, 'name': self.name}
         return data
 
 
@@ -361,11 +527,13 @@ class Model:
         self.name_list = {}
 
     def to_json(self):
-        data = {'name': self.name,
-                'bones': [b.to_json() for b in self.bones],
-                'bone_map': self.bone_map_list,
-                'name_list': self.name_list,
-                'mesh_data': self.model_data}
+        data = {
+            'name': self.name,
+            'bones': [b.to_json() for b in self.bones],
+            'bone_map': self.bone_map_list,
+            'name_list': self.name_list,
+            'mesh_data': self.model_data
+        }
         return data
 
     def read(self, reader: ByteIO):
@@ -456,12 +624,15 @@ class Model:
 
 
 if __name__ == '__main__':
-    path = Path(r"D:\SteamLibrary\steamapps\common\Overlord II\Resources")
-    for file in path.glob('Character*.prp'):
-        # a = PRP(r"D:\SteamLibrary\steamapps\common\Overlord II\Resources\Environment Empire Sewers.prp")
-        # a = PRP(r"D:\SteamLibrary\steamapps\common\Overlord II\Resources\Character Alpha Lizard.prp")
-        print('Extracting',file.stem)
-        a = PRP(file)
-        a.read()
-        a.save()
+    # path = Path(r"E:\SteamLibrary\steamapps\common\Overlord II\Resources")
+    # for file in path.glob('Character*.prp'):
+    #     # a = PRP(r"D:\SteamLibrary\steamapps\common\Overlord II\Resources\Environment Empire Sewers.prp")
+    #     # a = PRP(r"D:\SteamLibrary\steamapps\common\Overlord II\Resources\Character Alpha Lizard.prp")
+    #     print('Extracting',file.stem)
+    #     a = PRP(file)
+    #     a.read()
+    #     a.save()
     ...
+    a = PRP(r"E:\SteamLibrary\steamapps\common\Overlord II\Resources\Character Minion Master.prp")
+    a.read()
+    a.save()

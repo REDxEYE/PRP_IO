@@ -320,7 +320,7 @@ class ByteIO:
 
 class DataChunk:
     def __init__(self, t, o, r):
-        self.reader:ByteIO = r
+        self.reader:'ByteIO' = r
         self.type = t
         self.offset = o
 
@@ -329,6 +329,12 @@ class DataChunk:
         with self.reader.save_current_pos():
             self.reader.seek(self.offset)
             return self.reader.preview
+
+    def seek_to(self):
+        self.reader.seek(self.offset)
+
+    def get_items(self) -> List['DataChunk']:
+        return self.reader.get_items()
 
     def __repr__(self):
         return '<DataChunk type:{} offset:{}>'.format(self.type, self.offset)
