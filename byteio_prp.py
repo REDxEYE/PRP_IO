@@ -68,6 +68,11 @@ class ByteIO:
         with self.save_current_pos():
             return self.read_fmt('B' * 16)
 
+    @property
+    def floats(self):
+        with self.save_current_pos():
+            return self.read_fmt('f' * 16)
+
     def close(self):
         if hasattr(self.file, 'mode'):
             if 'w' in getattr(self.file, 'mode'):
